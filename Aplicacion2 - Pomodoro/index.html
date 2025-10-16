@@ -1,1 +1,828 @@
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
+
+// Firebase Imports - We will mock these for now as we don't have a real config
+const mockFirebase = {
+  initializeApp: () => ({}),
+  getAuth: () => ({
+    currentUser: null // Start as logged out
+  }),
+  // We'll manage auth state inside the AuthProvider now
+  onAuthStateChanged: (auth, callback) => {
+    // This will be handled by our provider's state
+    return () => {}; 
+  },
+  getFirestore: () => ({}),
+  collection: () => ({}),
+  doc: (db, path, id) => ({ path: `${path}/${id}` }), 
+  onSnapshot: (ref, callback) => {
+    if (ref.path?.includes('study_rooms')) {
+        const mockRoomData = {
+            name: "Sala de Estudio Principal",
+            owner: 'mockUserId123',
+            members: {
+                'mockUserId123': { name:'Usuario Demo', status: 'studying', timeLeft: 1450, currentTask: 'Desarrollar la aplicación Pomodoro' },
+                'mockUserAbc': { name: 'Compañero 1', status: 'break', timeLeft: 280, currentTask: 'Revisar documentación' },
+                'mockUserXyz': { name: 'Compañero 2', status: 'inactive', timeLeft: 0, currentTask: '' },
+            }
+        };
+       setTimeout(() => callback({
+exists: () => true, data: () => mockRoomData }), 500);
+    }
+     return () => {};
+  },
+  addDoc: () => Promise.resolve({ id: 'newMockTaskId' }),
+  updateDoc: () => Promise.resolve(),
+  deleteDoc: () => Promise.resolve(),
+  setDoc: () => Promise.resolve(),
+};
+
+const { initializeApp, getAuth, getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc } = mockFirebase;
+
+// Firebase Configuration (replace with your actual config)
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+const db = getFirestore();
+const auth = getAuth();
+
+// --- I18N (Internationalization) ---
+const translations = {
+    es: {
+        header: { title: "Focus Flow" },
+        tabs: { timer: "Temporizador", stats: "Estadísticas", settings: "Ajustes", profile: "Perfil" },
+        pwa: { install: "Instalar App" },
+        theme: { toggle: "Cambiar tema" },
+        timer: { focus: "Enfoque", shortBreak: "Descanso Corto", longBreak: "Descanso Largo", start: "Iniciar", pause: "Pausar", currentTask: "Tarea actual:", noTask: "Ninguna tarea seleccionada", session: "Sesión" },
+        tasks: { title: "Tareas Pendientes", placeholder: "Añadir una nueva tarea...", groupStudyPromptTitle: "¿Quieres estudiar en grupo?", groupStudyPromptBody: "Ve a la pestaña <strong>Perfil</strong> para iniciar sesión y crear salas de estudio.", selectedTask: "Tarea seleccionada", selectTask: "Seleccionar tarea" },
+        confirm: { title: "Confirmar Eliminación", message: "¿Estás seguro de que quieres eliminar esta tarea?", confirm: "Eliminar", cancel: "Cancelar" },
+        studyRoom: { loading: "Cargando sala...", invite: "Invitar" },
+        inviteModal: { title: "Invitar a la Sala", body: "Comparte este enlace para que otros se unan.", copy: "Copiar", share: "O comparte directamente en:", share_wa: "Compartir en WhatsApp", share_email: "Compartir por Email" },
+        stats: { title: "Calendario de Productividad", dayNames: ['L', 'M', 'X', 'J', 'V', 'S', 'D'], completed: "Completado", planned: "Planeado" },
+        planningModal: { title: "Planificar Día", objective: "Objetivo (minutos)", tasks: "Tareas", placeholder: "Añadir tarea...", save: "Guardar", cancel: "Cancelar" },
+        profile: { welcome: "Bienvenido", welcomeBody: "Inicia sesión para sincronizar tu progreso y personalizar tu experiencia.", login: "Iniciar Sesión", emailPlaceholder: "tu.correo@google.com", logout: "Cerrar Sesión", notifications: "Notificaciones", notif_vibration: "Vibración", notif_sound: "Sonido", notif_snooze: "Snooze (posponer)", focusAnimation: "Animación de Enfoque", breakAnimation: "Animación de Descanso", anim_forest: "Bosque", anim_rain: "Lluvia", anim_fire: "Chimenea", anim_waves: "Olas", anim_clouds: "Nubes", anim_zen: "Jardín Zen", language: "Idioma" },
+        notifications: { sessionEnded: "¡Tiempo Terminado!", sessionCompleteTitle: "¡Sesión Completada!", sessionCompleteBody: "¡Gran trabajo! Tómate un merecido descanso.", breakOverTitle: "¡Descanso terminado!", breakOverBody: "Es hora de volver a concentrarse.", taskDeleted: "La tarea ha sido eliminada con éxito.", taskDone: "¡Una tarea menos vamosss!", allApuntado: "¡Todo apuntado!", allApuntadoBody: "Pero eh, sigue estudiando.", settingsSaved: "Ajustes del temporizador actualizados.", linkCopied: "¡Enlace copiado!", linkCopyError: "No se pudo copiar el enlace.", loggedIn: "¡Sesión Iniciada!", loggedInBody: "¡Genial! Ya puedes estudiar con amigos.", loggedOut: "Sesión Cerrada", loggedOutBody: "Puedes seguir estudiando por tu cuenta." },
+        celebrations: { unstoppable: "¡IMPARABLE!", recharged: "¡RECARGADO!" }
+    },
+    en: {
+        header: { title: "Focus Flow" },
+        tabs: { timer: "Timer", stats: "Statistics", settings: "Settings", profile: "Profile" },
+        pwa: { install: "Install App" },
+        theme: { toggle: "Toggle theme" },
+        timer: { focus: "Focus", shortBreak: "Short Break", longBreak: "Long Break", start: "Start", pause: "Pause", currentTask: "Current task:", noTask: "No task selected", session: "Session" },
+        tasks: { title: "To-Do List", placeholder: "Add a new task...", groupStudyPromptTitle: "Want to study in a group?", groupStudyPromptBody: "Go to the <strong>Profile</strong> tab to log in and create study rooms.", selectedTask: "Task selected", selectTask: "Select task" },
+        confirm: { title: "Confirm Deletion", message: "Are you sure you want to delete this task?", confirm: "Delete", cancel: "Cancel" },
+        studyRoom: { loading: "Loading room...", invite: "Invite" },
+        inviteModal: { title: "Invite to Room", body: "Share this link for others to join.", copy: "Copy", share: "Or share directly on:", share_wa: "Share on WhatsApp", share_email: "Share via Email" },
+        stats: { title: "Productivity Calendar", dayNames: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], completed: "Completed", planned: "Planned" },
+        planningModal: { title: "Plan Your Day", objective: "Goal (minutes)", tasks: "Tasks", placeholder: "Add task...", save: "Save", cancel: "Cancel" },
+        profile: { welcome: "Welcome", welcomeBody: "Log in to sync your progress and customize your experience.", login: "Log In", emailPlaceholder: "your.email@google.com", logout: "Log Out", notifications: "Notifications", notif_vibration: "Vibration", notif_sound: "Sound", notif_snooze: "Snooze", focusAnimation: "Focus Animation", breakAnimation: "Break Animation", anim_forest: "Forest", anim_rain: "Rain", anim_fire: "Fireplace", anim_waves: "Waves", anim_clouds: "Clouds", anim_zen: "Zen Garden", language: "Language" },
+        notifications: { sessionEnded: "Time's Up!", sessionCompleteTitle: "Session Complete!", sessionCompleteBody: "Great work! Take a well-deserved break.", breakOverTitle: "Break's over!", breakOverBody: "Time to get back to focus.", taskDeleted: "Task has been successfully deleted.", taskDone: "One less task, let's go!", allApuntado: "All noted!", allApuntadoBody: "But hey, keep studying.", settingsSaved: "Timer settings updated.", linkCopied: "Link copied!", linkCopyError: "Could not copy the link.", loggedIn: "Logged In!", loggedInBody: "Great! You can now study with friends.", loggedOut: "Logged Out", loggedOutBody: "You can continue studying on your own." },
+        celebrations: { unstoppable: "UNSTOPPABLE!", recharged: "RECHARGED!" }
+    },
+    it: {
+        header: { title: "Focus Flow" },
+        tabs: { timer: "Timer", stats: "Statistiche", settings: "Impostazioni", profile: "Profilo" },
+        pwa: { install: "Installa App" },
+        theme: { toggle: "Cambia tema" },
+        timer: { focus: "Concentrazione", shortBreak: "Pausa Breve", longBreak: "Pausa Lunga", start: "Inizia", pause: "Pausa", currentTask: "Compito attuale:", noTask: "Nessun compito selezionato", session: "Sessione" },
+        tasks: { title: "Elenco Compiti", placeholder: "Aggiungi un nuovo compito...", groupStudyPromptTitle: "Vuoi studiare in gruppo?", groupStudyPromptBody: "Vai alla scheda <strong>Profilo</strong> per accedere e creare stanze di studio.", selectedTask: "Compito selezionato", selectTask: "Seleziona compito" },
+        confirm: { title: "Conferma Eliminazione", message: "Sei sicuro di voler eliminare questo compito?", confirm: "Elimina", cancel: "Annulla" },
+        studyRoom: { loading: "Caricamento stanza...", invite: "Invita" },
+        inviteModal: { title: "Invita nella Stanza", body: "Condividi questo link per far partecipare altri.", copy: "Copia", share: "O condividi direttamente su:", share_wa: "Condividi su WhatsApp", share_email: "Condividi via Email" },
+        stats: { title: "Calendario Produttività", dayNames: ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'], completed: "Completato", planned: "Pianificato" },
+        planningModal: { title: "Pianifica la Giornata", objective: "Obiettivo (minuti)", tasks: "Compiti", placeholder: "Aggiungi compito...", save: "Salva", cancel: "Annulla" },
+        profile: { welcome: "Benvenuto", welcomeBody: "Accedi per sincronizzare i tuoi progressi e personalizzare la tua esperienza.", login: "Accedi", emailPlaceholder: "tua.email@google.com", logout: "Esci", notifications: "Notifiche", notif_vibration: "Vibrazione", notif_sound: "Suono", notif_snooze: "Posticipa", focusAnimation: "Animazione Concentrazione", breakAnimation: "Animazione Pausa", anim_forest: "Foresta", anim_rain: "Pioggia", anim_fire: "Camino", anim_waves: "Onde", anim_clouds: "Nuvole", anim_zen: "Giardino Zen", language: "Lingua" },
+        notifications: { sessionEnded: "Tempo Scaduto!", sessionCompleteTitle: "Sessione Completata!", sessionCompleteBody: "Ottimo lavoro! Prenditi una meritata pausa.", breakOverTitle: "Pausa terminata!", breakOverBody: "È ora di tornare a concentrarsi.", taskDeleted: "Il compito è stato eliminato con successo.", taskDone: "Un compito in meno, andiamo!", allApuntado: "Tutto segnato!", allApuntadoBody: "Ma ehi, continua a studiare.", settingsSaved: "Impostazioni del timer aggiornate.", linkCopied: "Link copiato!", linkCopyError: "Impossibile copiare il link.", loggedIn: "Accesso Eseguito!", loggedInBody: "Fantastico! Ora puoi studiare con gli amici.", loggedOut: "Disconnesso", loggedOutBody: "Puoi continuare a studiare da solo." },
+        celebrations: { unstoppable: "INARRESTABILE!", recharged: "RICARICATO!" }
+    },
+    fr: {
+        header: { title: "Focus Flow" },
+        tabs: { timer: "Minuteur", stats: "Statistiques", settings: "Réglages", profile: "Profil" },
+        pwa: { install: "Installer l'App" },
+        theme: { toggle: "Changer de thème" },
+        timer: { focus: "Focus", shortBreak: "Pause Courte", longBreak: "Pause Longue", start: "Démarrer", pause: "Pause", currentTask: "Tâche actuelle :", noTask: "Aucune tâche sélectionnée", session: "Session" },
+        tasks: { title: "Liste des Tâches", placeholder: "Ajouter une nouvelle tâche...", groupStudyPromptTitle: "Voulez-vous étudier en groupe ?", groupStudyPromptBody: "Allez dans l'onglet <strong>Profil</strong> pour vous connecter et créer des salles d'étude.", selectedTask: "Tâche sélectionnée", selectTask: "Sélectionner la tâche" },
+        confirm: { title: "Confirmer la Suppression", message: "Êtes-vous sûr de vouloir supprimer cette tâche ?", confirm: "Supprimer", cancel: "Annuler" },
+        studyRoom: { loading: "Chargement de la salle...", invite: "Inviter" },
+        inviteModal: { title: "Inviter à la Salle", body: "Partagez ce lien pour que d'autres puissent rejoindre.", copy: "Copier", share: "Ou partagez directement sur :", share_wa: "Partager sur WhatsApp", share_email: "Partager par Email" },
+        stats: { title: "Calendrier de Productivité", dayNames: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'], completed: "Terminé", planned: "Prévu" },
+        planningModal: { title: "Planifier la Journée", objective: "Objectif (minutes)", tasks: "Tâches", placeholder: "Ajouter une tâche...", save: "Enregistrer", cancel: "Annuler" },
+        profile: { welcome: "Bienvenue", welcomeBody: "Connectez-vous pour synchroniser vos progrès et personnaliser votre expérience.", login: "Se connecter", emailPlaceholder: "votre.email@google.com", logout: "Se déconnecter", notifications: "Notifications", notif_vibration: "Vibration", notif_sound: "Son", notif_snooze: "Rappel", focusAnimation: "Animation de Focus", breakAnimation: "Animation de Pause", anim_forest: "Forêt", anim_rain: "Pluie", anim_fire: "Cheminée", anim_waves: "Vagues", anim_clouds: "Nuages", anim_zen: "Jardin Zen", language: "Langue" },
+        notifications: { sessionEnded: "Temps Écoulé !", sessionCompleteTitle: "Session Terminée !", sessionCompleteBody: "Excellent travail ! Prenez une pause bien méritée.", breakOverTitle: "La pause est terminée !", breakOverBody: "Il est temps de se reconcentrer.", taskDeleted: "La tâche a été supprimée avec succès.", taskDone: "Une tâche de moins, allons-y !", allApuntado: "Tout est noté !", allApuntadoBody: "Mais continuez à étudier.", settingsSaved: "Réglages du minuteur mis à jour.", linkCopied: "Lien copié !", linkCopyError: "Impossible de copier le lien.", loggedIn: "Connecté !", loggedInBody: "Génial ! Vous pouvez maintenant étudier avec des amis.", loggedOut: "Déconnecté", loggedOutBody: "Vous pouvez continuer à étudier seul." },
+        celebrations: { unstoppable: "INARRÊTABLE !", recharged: "RECHARGÉ !" }
+    },
+    de: {
+        header: { title: "Focus Flow" },
+        tabs: { timer: "Timer", stats: "Statistiken", settings: "Einstellungen", profile: "Profil" },
+        pwa: { install: "App installieren" },
+        theme: { toggle: "Thema wechseln" },
+        timer: { focus: "Fokus", shortBreak: "Kurze Pause", longBreak: "Lange Pause", start: "Start", pause: "Pause", currentTask: "Aktuelle Aufgabe:", noTask: "Keine Aufgabe ausgewählt", session: "Sitzung" },
+        tasks: { title: "Aufgabenliste", placeholder: "Neue Aufgabe hinzufügen...", groupStudyPromptTitle: "Möchtest du in einer Gruppe lernen?", groupStudyPromptBody: "Gehe zum <strong>Profil</strong>-Tab, um dich anzumelden und Lernräume zu erstellen.", selectedTask: "Aufgabe ausgewählt", selectTask: "Aufgabe auswählen" },
+        confirm: { title: "Löschen bestätigen", message: "Möchtest du diese Aufgabe wirklich löschen?", confirm: "Löschen", cancel: "Abbrechen" },
+        studyRoom: { loading: "Raum wird geladen...", invite: "Einladen" },
+        inviteModal: { title: "In Raum einladen", body: "Teile diesen Link, damit andere beitreten können.", copy: "Kopieren", share: "Oder direkt teilen auf:", share_wa: "Auf WhatsApp teilen", share_email: "Per E-Mail teilen" },
+        stats: { title: "Produktivitätskalender", dayNames: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'], completed: "Abgeschlossen", planned: "Geplant" },
+        planningModal: { title: "Tag planen", objective: "Ziel (Minuten)", tasks: "Aufgaben", placeholder: "Aufgabe hinzufügen...", save: "Speichern", cancel: "Abbrechen" },
+        profile: { welcome: "Willkommen", welcomeBody: "Melde dich an, um deinen Fortschritt zu synchronisieren und deine Erfahrung anzupassen.", login: "Anmelden", emailPlaceholder: "deine.email@google.com", logout: "Abmelden", notifications: "Benachrichtigungen", notif_vibration: "Vibration", notif_sound: "Ton", notif_snooze: "Schlummern", focusAnimation: "Fokus-Animation", breakAnimation: "Pausen-Animation", anim_forest: "Wald", anim_rain: "Regen", anim_fire: "Kamin", anim_waves: "Wellen", anim_clouds: "Wolken", anim_zen: "Zen-Garten", language: "Sprache" },
+        notifications: { sessionEnded: "Zeit abgelaufen!", sessionCompleteTitle: "Sitzung abgeschlossen!", sessionCompleteBody: "Gute Arbeit! Mach eine wohlverdiente Pause.", breakOverTitle: "Pause vorbei!", breakOverBody: "Zeit, sich wieder zu konzentrieren.", taskDeleted: "Aufgabe wurde erfolgreich gelöscht.", taskDone: "Eine Aufgabe weniger, los geht's!", allApuntado: "Alles notiert!", allApuntadoBody: "Aber hey, lerne weiter.", settingsSaved: "Timer-Einstellungen aktualisiert.", linkCopied: "Link kopiert!", linkCopyError: "Link konnte nicht kopiert werden.", loggedIn: "Angemeldet!", loggedInBody: "Super! Du kannst jetzt mit Freunden lernen.", loggedOut: "Abgemeldet", loggedOutBody: "Du kannst alleine weiterlernen." },
+        celebrations: { unstoppable: "UNAUFHALTSAM!", recharged: "AUFGELADEN!" }
+    }
+};
+
+const backgroundImages = {
+    focus: {
+        forest: 'https://images.unsplash.com/photo-1448375240586-882707db888b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80',
+        rain: 'https://images.unsplash.com/photo-1515694346937-94d85e41e682?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80',
+        fire: 'https://images.unsplash.com/photo-1549402517-5401fd69b35b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80'
+    },
+    break: {
+        waves: 'https://images.unsplash.com/photo-1518364538800-65f6521435e0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80',
+        clouds: 'https://images.unsplash.com/photo-1499346030926-9a72daac6c63?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80',
+        zen: 'https://images.unsplash.com/photo-1540317580384-e5d43616b9aa?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80'
+    }
+};
+
+
+// --- CONTEXTOS ---
+const AppContext = createContext(null);
+const AuthContext = createContext(null);
+const ThemeContext = createContext('light');
+const SettingsContext = createContext(null);
+const TaskContext = createContext(null);
+
+// --- HOOKS PERSONALIZADOS ---
+const useAuth = () => useContext(AuthContext);
+const useTheme = () => useContext(ThemeContext);
+const useSettings = () => useContext(SettingsContext);
+const useTasks = () => useContext(TaskContext);
+const useTranslation = () => {
+    const { settings } = useSettings();
+    const lang = settings.language || 'es';
+
+    const t = useCallback((key, options = {}) => {
+        let text = key.split('.').reduce((obj, k) => obj && obj[k], translations[lang]);
+        if (!text) {
+             // Fallback to English if translation is missing
+            text = key.split('.').reduce((obj, k) => obj && obj[k], translations['en']);
+        }
+
+        if (text && typeof text === 'string') {
+            Object.keys(options).forEach(k => {
+                text = text.replace(`{{${k}}}`, options[k]);
+            });
+        }
+        return text || key;
+    }, [lang]);
+    
+    return { t, lang };
+};
+
+// --- PROVIDERS DE CONTEXTO ---
+function TaskProvider({ children }) {
+    const [tasks, setTasks] = useState([
+        { id: '1', text: 'Desarrollar la aplicación Pomodoro', completed: false },
+        { id: '2', text: 'Preparar la presentación del proyecto', completed: false },
+        { id: '3', text: 'Investigar sobre WebSockets', completed: true },
+    ]);
+    const [associatedTask, setAssociatedTask] = useState(tasks.length > 0 ? tasks[0] : null);
+    const addTask = (text) => setTasks(prev => [...prev, { id: crypto.randomUUID(), text, completed: false }]);
+    const toggleTask = (id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+    const deleteTask = (id) => {
+        if (associatedTask?.id === id) setAssociatedTask(null);
+        setTasks(prev => prev.filter(t => t.id !== id));
+    };
+    const associateTask = (id) => {
+        if (associatedTask?.id === id) setAssociatedTask(null);
+        else setAssociatedTask(tasks.find(t => t.id === id));
+    };
+    return <TaskContext.Provider value={{ tasks, addTask, toggleTask, deleteTask, associateTask, associatedTask }}>{children}</TaskContext.Provider>;
+}
+
+function AuthProvider({ children }) {  
+    const { setNotification } = useSettings();
+    const { t } = useTranslation();
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        setTimeout(() => setLoading(false), 1000);
+    }, []);
+
+    const login = (email) => {
+        const mockUser = {
+            uid: `mock_${new Date().getTime()}`,
+            email: email,
+            displayName: email.split('@')[0],
+            photoURL: `https://placehold.co/100x100/3b82f6/FFFFFF?text=${email.charAt(0).toUpperCase()}`
+        };
+        setUser(mockUser);
+        setNotification({ title: t('notifications.loggedIn'), message: t('notifications.loggedInBody'), type: "success" });
+    };
+
+    const logout = () => {
+        setUser(null);
+        setNotification({ title: t('notifications.loggedOut'), message: t('notifications.loggedOutBody'), type: "info" });
+    };
+
+    const value = { user, login, logout, loading };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-900">
+                <div className="w-16 h-16 border-4 border-blue-400 border-dashed rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+    
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+
+// --- COMPONENTES PRINCIPALES ---
+
+function PomodoroTimer() {
+    const { settings, setNotification, triggerFocusCelebration, triggerBreakCelebration } = useSettings();
+    const { associatedTask } = useTasks();
+    const { t } = useTranslation();
+    const [mode, setMode] = useState('focus');
+    const [isActive, setIsActive] = useState(false);
+    const [sessionsCompleted, setSessionsCompleted] = useState(0);
+    
+    const getDuration = useCallback(() => {
+        switch (mode) {
+            case 'focus': return settings.pomodoro.focusDuration * 60;
+            case 'shortBreak': return settings.pomodoro.shortBreakDuration * 60;
+            case 'longBreak': return settings.pomodoro.longBreakDuration * 60;
+            default: return settings.pomodoro.focusDuration * 60;
+        }
+    }, [mode, settings.pomodoro]);
+
+    const [timeLeft, setTimeLeft] = useState(getDuration());
+    const intervalRef = useRef(null);
+
+    useEffect(() => { setTimeLeft(getDuration()); }, [mode, getDuration, settings.pomodoro]);
+
+    const handleSessionEnd = useCallback(() => {
+        setIsActive(false);
+        document.title = t('notifications.sessionEnded');
+        setTimeout(() => document.title = t('header.title'), 3000);
+        
+        if (mode === 'focus') {
+            setNotification({ title: t('notifications.sessionCompleteTitle'), message: t('notifications.sessionCompleteBody'), type: "success" });
+            triggerFocusCelebration();
+            const newSessionsCompleted = sessionsCompleted + 1;
+            setSessionsCompleted(newSessionsCompleted);
+            setMode(newSessionsCompleted % settings.pomodoro.sessionsBeforeLongBreak === 0 ? 'longBreak' : 'shortBreak');
+        } else {
+            setNotification({ title: t('notifications.breakOverTitle'), message: t('notifications.breakOverBody'), type: "info" });
+            triggerBreakCelebration();
+            setMode('focus');
+        }
+    }, [mode, sessionsCompleted, settings.pomodoro, setNotification, triggerFocusCelebration, triggerBreakCelebration, t]);
+
+    useEffect(() => {
+        if (isActive) {
+            intervalRef.current = setInterval(() => {
+                setTimeLeft(prev => {
+                    if (prev <= 1) { handleSessionEnd(); return 0; }
+                    return prev - 1;
+                });
+            }, 1000);
+        } else clearInterval(intervalRef.current);
+        return () => clearInterval(intervalRef.current);
+    }, [isActive, handleSessionEnd]);
+    
+    const toggleTimer = () => setIsActive(!isActive);
+    const resetTimer = () => { setIsActive(false); setTimeLeft(getDuration()); };
+    const skipSession = () => handleSessionEnd();
+
+    const minutes = Math.floor(timeLeft / 60);
+    const seconds = timeLeft % 60;
+    const progress = (getDuration() - timeLeft) / getDuration() * 100;
+    
+    const isFocus = mode === 'focus';
+    const currentAnimationKey = isFocus ? settings.animations.focus : settings.animations.break;
+    const backgroundUrl = isFocus ? backgroundImages.focus[currentAnimationKey] : backgroundImages.break[currentAnimationKey];
+
+    const themeColors = {
+        focus: { progress: 'bg-blue-500' },
+        shortBreak: { progress: 'bg-green-500' },
+        longBreak: { progress: 'bg-purple-500' },
+    };
+    const colors = themeColors[mode];
+    const totalSessions = settings.pomodoro.sessionsBeforeLongBreak;
+    const currentSessionIndexInCycle = sessionsCompleted % totalSessions;
+
+    return (
+        <div className="w-full max-w-md mx-auto rounded-3xl shadow-lg relative overflow-hidden transition-all duration-500">
+             <div
+                className="absolute inset-0 bg-cover bg-center transition-all duration-1000 z-0"
+                style={{ backgroundImage: `url(${backgroundUrl})` }}
+            ></div>
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-10"></div>
+            <div className="relative z-20 p-6 md:p-8 text-white">
+                <div className="flex justify-center mb-4 space-x-2">
+                    {[{id: 'focus', label: t('timer.focus')}, {id: 'shortBreak', label: t('timer.shortBreak')}, {id: 'longBreak', label: t('timer.longBreak')}].map(m => (
+                        <button key={m.id} onClick={() => { setIsActive(false); setMode(m.id);}} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-300 ${mode === m.id ? `${colors.progress} text-white` : 'bg-white/20 dark:bg-gray-700/50 text-white dark:text-gray-200'}`}>{m.label}</button>
+                    ))}
+                </div>
+                <div className="flex justify-center items-center space-x-2 mb-4">
+                    {Array.from({ length: totalSessions }).map((_, index) => {
+                        const isCompleted = index < currentSessionIndexInCycle;
+                        const isCurrent = index === currentSessionIndexInCycle && mode === 'focus';
+                        return (<div key={index} className={`w-5 h-5 rounded-full flex items-center justify-center transition-all duration-300 ${isCurrent ? `${colors.progress} ring-2 ring-offset-2 ring-blue-500 dark:ring-offset-gray-900/50` : ''} ${isCompleted ? `${colors.progress}` : 'bg-gray-300/50 dark:bg-gray-600/50'}`} title={`${t('timer.session')} ${index + 1}`}>{isCompleted && <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}</div>);
+                    })}
+                </div>
+                <div className="relative w-48 h-48 md:w-64 md:h-64 mx-auto mb-6">
+                    <svg className="w-full h-full" viewBox="0 0 100 100"><circle className="text-white/30" strokeWidth="7" stroke="currentColor" fill="transparent" r="45" cx="50" cy="50" /><circle className={`${colors.progress} transition-all duration-500`} strokeWidth="7" strokeDasharray="283" strokeDashoffset={283 - (progress / 100) * 283} stroke="currentColor" fill="transparent" r="45" cx="50" cy="50" style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }} /></svg>
+                    <div className="absolute inset-0 flex items-center justify-center text-4xl md:text-6xl font-bold text-white shadow-lg">{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</div>
+                </div>
+                <div className="flex items-center justify-center space-x-4">
+                    <button onClick={toggleTimer} className={`px-8 py-3 text-xl font-bold text-white rounded-full transition-transform transform hover:scale-105 shadow-md ${colors.progress}`}>{isActive ? t('timer.pause') : t('timer.start')}</button>
+                    <button onClick={resetTimer} className="p-3 text-white/80 rounded-full hover:bg-white/20 transition"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h5M20 20v-5h-5" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 9a9 9 0 0115.8-3.53M20 15a9 9 0 01-15.8 3.53" /></svg></button>
+                    <button onClick={skipSession} className="p-3 text-white/80 rounded-full hover:bg-white/20 transition"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg></button>
+                </div>
+                <div className="mt-6 pt-4 border-t border-white/20 text-center"><p className="text-sm font-medium text-white/80">{t('timer.currentTask')}</p><p className="text-lg font-semibold truncate text-white">{associatedTask ? associatedTask.text : t('timer.noTask')}</p></div>
+            </div>
+        </div>
+    );
+}
+
+function ConfirmationModal({ isOpen, title, message, onConfirm, onCancel, confirmText, cancelText }) {
+    if (!isOpen) return null;
+    return (<div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50"><div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 text-center"><h3 className="text-xl font-bold text-gray-800 dark:text-white mb-2">{title}</h3><p className="text-gray-600 dark:text-gray-300 mb-6">{message}</p><div className="flex justify-center space-x-4"><button onClick={onCancel} className="px-6 py-2 font-semibold text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500">{cancelText}</button><button onClick={onConfirm} className="px-6 py-2 font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600">{confirmText}</button></div></div></div>);
+}
+
+function TaskManager() {
+    const { user } = useAuth();
+    const { tasks, addTask, toggleTask, deleteTask, associateTask, associatedTask } = useTasks();
+    const { setNotification, triggerCelebration } = useSettings();
+    const { t } = useTranslation();
+    const [newTask, setNewTask] = useState('');
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [taskToDeleteId, setTaskToDeleteId] = useState(null);
+    const handleAddTask = (e) => { e.preventDefault(); if (newTask.trim()) { addTask(newTask); setNewTask(''); } };
+    const handleRequestDelete = (id) => { setTaskToDeleteId(id); setIsConfirmModalOpen(true); };
+    const handleConfirmDelete = () => { if (taskToDeleteId) { deleteTask(taskToDeleteId); setNotification({ title: t('notifications.taskDeleted'), type: "success" }); } setIsConfirmModalOpen(false); setTaskToDeleteId(null); };
+    const handleCancelDelete = () => { setIsConfirmModalOpen(false); setTaskToDeleteId(null); };
+    const handleToggleTask = (task) => { if (!task.completed) { setNotification({ title: t('notifications.taskDone'), type: "success" }); triggerCelebration(); } toggleTask(task.id); };
+    return (<div className="w-full max-w-md mx-auto p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-lg mt-8">
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-4">{t('tasks.title')}</h2>
+        <form onSubmit={handleAddTask} className="flex mb-4"><input type="text" value={newTask} onChange={(e) => setNewTask(e.target.value)} placeholder={t('tasks.placeholder')} className="flex-grow p-3 border-2 border-gray-200 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-700 dark:border-gray-600 dark:text-white" /><button type="submit" className="px-4 py-3 font-semibold text-white bg-blue-500 rounded-r-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400">+</button></form>
+        <ul className="space-y-3 max-h-60 overflow-y-auto pr-2">{tasks.map(task => (<li key={task.id} className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg group"><input type="checkbox" checked={task.completed} onChange={() => handleToggleTask(task)} className="w-5 h-5 text-blue-500 rounded border-gray-300 focus:ring-blue-500" /><span className={`flex-grow mx-3 ${task.completed ? 'line-through text-gray-500' : 'text-gray-800 dark:text-gray-200'}`}>{task.text}</span><button onClick={() => associateTask(task.id)} className={`p-1 transition-colors opacity-0 group-hover:opacity-100 ${associatedTask?.id === task.id ? 'text-blue-500' : 'text-gray-400 hover:text-blue-500'}`} title={associatedTask?.id === task.id ? t('tasks.selectedTask') : t('tasks.selectTask')}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg></button><button onClick={() => handleRequestDelete(task.id)} className="p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg></button></li>))}</ul>
+        <ConfirmationModal isOpen={isConfirmModalOpen} title={t('confirm.title')} message={t('confirm.message')} onConfirm={handleConfirmDelete} onCancel={handleCancelDelete} confirmText={t('confirm.confirm')} cancelText={t('confirm.cancel')} />
+        
+        {!user && (
+            <div className="mt-6 -mx-6 -mb-6 p-4 bg-blue-50 dark:bg-gray-900/50 border-t border-blue-200 dark:border-gray-700 rounded-b-3xl">
+                <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                        <svg className="h-8 w-8 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+                        </svg>
+                    </div>
+                    <div className="ml-4">
+                        <p className="text-sm font-bold text-blue-800 dark:text-blue-300">{t('tasks.groupStudyPromptTitle')}</p>
+                        <p className="text-sm text-blue-600 dark:text-blue-400" dangerouslySetInnerHTML={{ __html: t('tasks.groupStudyPromptBody') }} />
+                    </div>
+                </div>
+            </div>
+        )}
+    </div>);
+}
+
+function StudyRoom() {
+    const { user } = useAuth();
+    const { setNotification } = useSettings();
+    const { t } = useTranslation();
+    if (!user) return null; // Hide if not logged in
+    const [room, setRoom] = useState(null);
+    const [roomId] = useState('main_room');
+    const [showInvite, setShowInvite] = useState(false);
+    useEffect(() => { const unsub = onSnapshot(doc(db, 'study_rooms', roomId), (doc) => { if (doc.exists()) setRoom({ id: doc.id, ...doc.data() }); }); return () => unsub(); }, [roomId]);
+    const getStatusInfo = (s) => ({studying:{t:'Estudiando',c:'bg-blue-500'},break:{t:'Descansando',c:'bg-green-500'},inactive:{t:'Inactivo',c:'bg-gray-400'}}[s]||{t:'Desconocido',c:'bg-yellow-500'});
+    if (!room) return <div className="text-center p-4">{t('studyRoom.loading')}</div>;
+    return (<div className="w-full max-w-md mx-auto p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-lg mt-8"><div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-gray-800 dark:text-white">{room.name}</h2><button onClick={() => setShowInvite(true)} className="px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600">{t('studyRoom.invite')}</button></div><ul className="space-y-4">{room.members && Object.entries(room.members).map(([uid, member]) => { const s = getStatusInfo(member.status); return (<li key={uid} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"><div className="flex items-center"><span className={`w-3 h-3 rounded-full mr-3 ${s.c}`}></span><div><p className="font-semibold text-gray-800 dark:text-gray-200">{member.name} {uid === user.uid && '(Tú)'}</p><p className="text-sm text-gray-500 dark:text-gray-400 truncate">{member.currentTask || 'N/A'}</p></div></div><div className="text-right"><p className={`font-mono text-lg font-semibold ${s.c.replace('bg', 'text')}`}>{Math.floor(member.timeLeft/60)}:{String(member.timeLeft%60).padStart(2,'0')}</p><p className="text-xs text-gray-500">{s.t}</p></div></li>)})}</ul>{showInvite && <InviteModal roomId={roomId} onClose={() => setShowInvite(false)} setNotification={setNotification} />}</div>);
+}
+
+function InviteModal({ roomId, onClose, setNotification }) {
+    const { t } = useTranslation();
+    const inviteLink = `${window.location.origin}/study-room/${roomId}`;
+    const copyToClipboard = () => {
+        const textArea = document.createElement("textarea");
+        textArea.value = inviteLink;
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try { 
+            document.execCommand('copy'); 
+            setNotification({ title: t('notifications.linkCopied'), type: "success" });
+        } catch (err) { 
+            console.error('Failed to copy: ', err); 
+            setNotification({ title: t('notifications.linkCopyError'), type: "error" });
+        }
+        document.body.removeChild(textArea);
+    };
+    return (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"><div className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 relative"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button><h2 className="text-3xl font-bold text-center mb-2">{t('inviteModal.title')}</h2><p className="text-center text-gray-500 mb-6">{t('inviteModal.body')}</p><div className="flex items-center space-x-2 bg-gray-100 dark:bg-gray-700 p-3 rounded-lg"><input type="text" readOnly value={inviteLink} className="w-full bg-transparent outline-none"/><button onClick={copyToClipboard} className="px-4 py-2 text-sm font-semibold text-white bg-blue-500 rounded-lg">{t('inviteModal.copy')}</button></div>
+                <div className="mt-6 text-center">
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">{t('inviteModal.share')}</p>
+                    <div className="flex justify-center space-x-4">
+                        <a href={`https://wa.me/?text=¡Únete a mi sala de estudio! ${inviteLink}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-green-500 text-white rounded-full hover:bg-green-600 transition-transform transform hover:scale-110" title={t('inviteModal.share_wa')}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.487 5.235 3.487 8.413 0 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01s-.521.074-.792.372c-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                        </a>
+                        <a href={`mailto:?subject=Invitación a Sala de Estudio&body=¡Únete a mi sala de estudio en Focus Flow! ${inviteLink}`} className="p-3 bg-red-500 text-white rounded-full hover:bg-red-600 transition-transform transform hover:scale-110" title={t('inviteModal.share_email')}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3v18h24v-18h-24zm21.518 2l-9.518 7.713-9.518-7.713h19.036zm-19.518 14v-11.817l10 8.104 10-8.104v11.817h-20z"/></svg>
+                        </a>
+                    </div>
+                </div>
+            </div></div>);
+}
+
+function Notification({ notification, onClose }) {
+    const [visible, setVisible] = useState(false);
+    useEffect(() => { if (notification) { setVisible(true); const timer = setTimeout(() => { setVisible(false); setTimeout(onClose, 500); }, 3000); return () => clearTimeout(timer); } }, [notification, onClose]);
+    if (!notification) return null;
+    const { title, message, type } = notification;
+    const s = {success:{b:'bg-green-100',br:'border-green-500',t:'text-green-700'},info:{b:'bg-blue-100',br:'border-blue-500',t:'text-blue-700'}}[type]||{b:'bg-gray-100',br:'border-gray-500',t:'text-gray-700'};
+    return (<div className={`fixed top-20 right-5 z-50 p-4 rounded-lg shadow-lg transform transition-all duration-500 ${s.b} border-l-4 ${s.br} ${s.t} ${visible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}`}><p className="font-bold">{title}</p><p>{message}</p></div>);
+}
+
+function Settings() {
+    const { settings, setSettings, setNotification } = useSettings();
+    const { t } = useTranslation();
+    const [localSettings, setLocalSettings] = useState(settings.pomodoro);
+    const handleChange = (e) => setLocalSettings(p => ({ ...p, [e.target.name]: parseInt(e.target.value, 10) || 0 }));
+    const handleSave = (e) => { e.preventDefault(); setSettings(p => ({...p, pomodoro: localSettings})); setNotification({ title: t('notifications.settingsSaved'), type: "success" }); }
+    return (<div className="w-full max-w-md mx-auto p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-lg mt-8"><h2 className="text-2xl font-bold mb-6">{t('tabs.settings')}</h2><form className="space-y-6" onSubmit={handleSave}><div><label className="block text-sm font-medium mb-1">{`${t('timer.focus')} (${t('planningModal.objective')})`}</label><input type="number" name="focusDuration" value={localSettings.focusDuration} onChange={handleChange} className="w-full p-2 border rounded-lg dark:bg-gray-700"/></div><div><label className="block text-sm font-medium mb-1">{`${t('timer.shortBreak')} (${t('planningModal.objective')})`}</label><input type="number" name="shortBreakDuration" value={localSettings.shortBreakDuration} onChange={handleChange} className="w-full p-2 border rounded-lg dark:bg-gray-700"/></div><div><label className="block text-sm font-medium mb-1">{`${t('timer.longBreak')} (${t('planningModal.objective')})`}</label><input type="number" name="longBreakDuration" value={localSettings.longBreakDuration} onChange={handleChange} className="w-full p-2 border rounded-lg dark:bg-gray-700"/></div><div><label className="block text-sm font-medium mb-1">{`${t('timer.session')}s for ${t('timer.longBreak')}`}</label><input type="number" name="sessionsBeforeLongBreak" value={localSettings.sessionsBeforeLongBreak} onChange={handleChange} className="w-full p-2 border rounded-lg dark:bg-gray-700"/></div><button type="submit" className="w-full px-4 py-3 font-semibold text-white bg-blue-500 rounded-lg">{t('planningModal.save')}</button></form></div>);
+}
+
+function PlanningModal({ selectedDate, dayData, onSave, onClose }) {
+    const { t, lang } = useTranslation();
+    const [tasks, setTasks] = useState(dayData?.plannedTasks || []);
+    const [minutes, setMinutes] = useState(dayData?.plannedMinutes || 60);
+    const [newTaskText, setNewTaskText] = useState('');
+    const handleAddTask = (e) => { e.preventDefault(); if (newTaskText.trim()) { setTasks([...tasks, { id: crypto.randomUUID(), text: newTaskText }]); setNewTaskText(''); } };
+    const handleDeleteTask = (id) => setTasks(tasks.filter(t => t.id !== id));
+    const handleSave = () => onSave(selectedDate, { plannedTasks: tasks, plannedMinutes: minutes });
+    return (<div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50"><div className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 relative"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button><h2 className="text-2xl font-bold mb-2">{t('planningModal.title')}</h2><p className="text-lg text-blue-500 font-semibold mb-4">{selectedDate.toLocaleDateString(lang, { weekday: 'long', day: 'numeric', month: 'long' })}</p><div className="space-y-4"><div><label className="block text-sm font-medium mb-1">{t('planningModal.objective')}</label><input type="number" value={minutes} onChange={(e) => setMinutes(parseInt(e.target.value) || 0)} className="w-full p-2 border rounded-lg dark:bg-gray-700"/></div><div><label className="block text-sm font-medium mb-1">{t('planningModal.tasks')}</label><form onSubmit={handleAddTask} className="flex"><input type="text" value={newTaskText} onChange={e => setNewTaskText(e.target.value)} placeholder={t('planningModal.placeholder')} className="flex-grow p-2 border rounded-l-lg dark:bg-gray-700"/><button type="submit" className="px-4 py-2 font-semibold text-white bg-blue-500 rounded-r-lg">+</button></form><ul className="mt-2 space-y-2 max-h-40 overflow-y-auto pr-2">{tasks.map(t=>(<li key={t.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded-md"><span>{t.text}</span><button onClick={()=>handleDeleteTask(t.id)} className="p-1 text-gray-400 hover:text-red-500">✖</button></li>))}</ul></div></div><div className="mt-6 flex justify-end space-x-3"><button onClick={onClose} className="px-4 py-2 font-semibold text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300">{t('planningModal.cancel')}</button><button onClick={handleSave} className="px-4 py-2 font-semibold text-white bg-blue-500 rounded-lg hover:bg-blue-600">{t('planningModal.save')}</button></div></div></div>);
+}
+
+function Stats() {
+    const { setNotification } = useSettings();
+    const { t, lang } = useTranslation();
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [calendarData, setCalendarData] = useState({ '2025-10-08': { completedMinutes: 125, plannedMinutes: 120 }, });
+    const handlePrevMonth = () => setCurrentDate(p => new Date(p.getFullYear(), p.getMonth() - 1, 1));
+    const handleNextMonth = () => setCurrentDate(p => new Date(p.getFullYear(), p.getMonth() + 1, 1));
+    const handleDayClick = (day) => { setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day)); setIsModalOpen(true); };
+    const handleSaveData = (date, data) => { const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; setCalendarData(p => ({ ...p, [key]: { ...p[key], ...data } })); setIsModalOpen(false); setNotification({ title: t('notifications.allApuntado'), message: t('notifications.allApuntadoBody'), type: "info" }); };
+    const renderCalendar = () => {
+        const year = currentDate.getFullYear(), month = currentDate.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const firstDay = new Date(year, month, 1).getDay();
+        const offset = (firstDay === 0) ? 6 : firstDay - 1;
+        const days = [];
+        for (let i = 0; i < offset; i++) days.push(<div key={`e-${i}`}></div>);
+        for (let day = 1; day <= daysInMonth; day++) {
+            const key = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            const data = calendarData[key];
+            days.push(<div key={day} onClick={() => handleDayClick(day)} className="p-2 border rounded-lg text-center relative cursor-pointer bg-gray-50 hover:bg-blue-100"><span className="font-medium">{day}</span><div className="absolute bottom-1 right-1 flex space-x-1">{data?.completedMinutes > 0 && <div className="w-2 h-2 bg-green-500 rounded-full" title={t('stats.completed')}></div>}{data?.plannedMinutes > 0 && <div className="w-2 h-2 bg-blue-500 rounded-full" title={t('stats.planned')}></div>}</div></div>);
+        }
+        return days;
+    };
+    return (<div className="w-full max-w-3xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-lg mt-8"><div className="flex justify-between items-center mb-4"><button onClick={handlePrevMonth} className="p-2">&lt;</button><h2 className="text-2xl font-bold capitalize">{currentDate.toLocaleDateString(lang, { month: 'long', year: 'numeric' })}</h2><button onClick={handleNextMonth} className="p-2">&gt;</button></div><div className="grid grid-cols-7 gap-2 text-sm"><>{t('stats.dayNames').map(d=><div key={d} className="font-bold text-center">{d}</div>)}{renderCalendar()}</></div>{isModalOpen && <PlanningModal selectedDate={selectedDate} dayData={calendarData[`${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`]} onSave={handleSaveData} onClose={() => setIsModalOpen(false)} />}</div>);
+}
+
+function ProfileScreen() {
+    const { user, login, logout } = useAuth();
+    const { settings, setSettings } = useSettings();
+    const { t } = useTranslation();
+    const [email, setEmail] = useState('');
+
+    const handleLogin = (e) => {
+        e.preventDefault();
+        if (email.includes('@') && email.includes('.')) {
+            login(email);
+        }
+    };
+
+    const handleNotificationChange = (key) => {
+        setSettings(prev => ({
+            ...prev,
+            notifications: { ...prev.notifications, [key]: !prev.notifications[key] }
+        }));
+    };
+    
+    const handleAnimationChange = (type, value) => {
+        setSettings(prev => ({ ...prev, animations: { ...prev.animations, [type]: value } }));
+    };
+    
+    const handleLanguageChange = (lang) => {
+        setSettings(prev => ({ ...prev, language: lang }));
+    };
+
+    if (!user) {
+        return (
+            <div className="w-full max-w-md mx-auto p-8 bg-white dark:bg-gray-800 rounded-3xl shadow-lg mt-8 text-center">
+                <h2 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">{t('profile.welcome')}</h2>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">{t('profile.welcomeBody')}</p>
+                <form onSubmit={handleLogin} className="flex flex-col space-y-4">
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={t('profile.emailPlaceholder')} required className="w-full p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-700 dark:border-gray-600" />
+                    <button type="submit" className="w-full px-4 py-3 font-semibold text-white bg-blue-500 rounded-lg hover:bg-blue-600">{t('profile.login')}</button>
+                </form>
+            </div>
+        );
+    }
+
+    const AnimationCard = ({ id, title, icon, type, selected, onClick }) => (
+        <div onClick={() => onClick(type, id)} className={`p-4 border-2 rounded-lg text-center cursor-pointer transition-all ${selected ? 'border-blue-500 bg-blue-50 dark:bg-gray-700' : 'border-gray-200 dark:border-gray-600 hover:border-blue-300'}`}>
+            <div className="text-4xl mb-2">{icon}</div>
+            <p className="font-semibold">{title}</p>
+        </div>
+    );
+    
+    return (
+        <div className="w-full max-w-2xl mx-auto p-6 space-y-8">
+            <div className="flex items-center space-x-4 p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-lg">
+                <img src={user.photoURL} alt="Avatar" className="w-20 h-20 rounded-full" />
+                <div>
+                    <h2 className="text-2xl font-bold">{user.displayName}</h2>
+                    <p className="text-gray-500 dark:text-gray-400">{user.email}</p>
+                    <button onClick={logout} className="mt-2 px-3 py-1 text-sm font-semibold text-red-600 bg-red-100 rounded-md hover:bg-red-200">{t('profile.logout')}</button>
+                </div>
+            </div>
+            
+            <div className="p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-lg">
+                <h3 className="text-xl font-bold mb-4">{t('profile.language')}</h3>
+                 <div className="flex space-x-2">
+                    {Object.keys(translations).map(lang => (
+                        <button key={lang} onClick={() => handleLanguageChange(lang)} className={`px-4 py-2 font-semibold rounded-lg text-sm transition-colors ${settings.language === lang ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>{lang.toUpperCase()}</button>
+                    ))}
+                 </div>
+            </div>
+
+            <div className="p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-lg">
+                <h3 className="text-xl font-bold mb-4">{t('profile.notifications')}</h3>
+                <div className="space-y-3">
+                    {Object.entries({vibration: t('profile.notif_vibration'), sound: t('profile.notif_sound'), snooze: t('profile.notif_snooze')}).map(([key, label]) => (
+                         <label key={key} className="flex items-center justify-between cursor-pointer">
+                            <span className="font-medium">{label}</span>
+                            <div className="relative">
+                                <input type="checkbox" checked={settings.notifications[key]} onChange={() => handleNotificationChange(key)} className="sr-only" />
+                                <div className={`block w-14 h-8 rounded-full transition ${settings.notifications[key] ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
+                                <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${settings.notifications[key] ? 'translate-x-6' : ''}`}></div>
+                            </div>
+                        </label>
+                    ))}
+                </div>
+            </div>
+
+            <div className="p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-lg">
+                 <h3 className="text-xl font-bold mb-4">{t('profile.focusAnimation')}</h3>
+                 <div className="grid grid-cols-3 gap-4">
+                    <AnimationCard id="forest" title={t('profile.anim_forest')} icon="🌳" type="focus" selected={settings.animations.focus === 'forest'} onClick={handleAnimationChange} />
+                    <AnimationCard id="rain" title={t('profile.anim_rain')} icon="🌧️" type="focus" selected={settings.animations.focus === 'rain'} onClick={handleAnimationChange} />
+                    <AnimationCard id="fire" title={t('profile.anim_fire')} icon="🔥" type="focus" selected={settings.animations.focus === 'fire'} onClick={handleAnimationChange} />
+                 </div>
+            </div>
+
+            <div className="p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-lg">
+                 <h3 className="text-xl font-bold mb-4">{t('profile.breakAnimation')}</h3>
+                 <div className="grid grid-cols-3 gap-4">
+                    <AnimationCard id="waves" title={t('profile.anim_waves')} icon="🌊" type="break" selected={settings.animations.break === 'waves'} onClick={handleAnimationChange} />
+                    <AnimationCard id="clouds" title={t('profile.anim_clouds')} icon="☁️" type="break" selected={settings.animations.break === 'clouds'} onClick={handleAnimationChange} />
+                    <AnimationCard id="zen" title={t('profile.anim_zen')} icon="🧘" type="break" selected={settings.animations.break === 'zen'} onClick={handleAnimationChange} />
+                 </div>
+            </div>
+        </div>
+    );
+}
+
+
+function PwaInstaller() {
+    const { t } = useTranslation();
+    const [deferredPrompt, setDeferredPrompt] = useState(null);
+    useEffect(() => { const handler = (e) => { e.preventDefault(); setDeferredPrompt(e); }; window.addEventListener('beforeinstallprompt', handler); return () => window.removeEventListener('beforeinstallprompt', handler); }, []);
+    const handleInstallClick = async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice; setDeferredPrompt(null); };
+    if (!deferredPrompt) return null;
+    return <button onClick={handleInstallClick} className="p-2 rounded-full hover:bg-gray-200" title={t('pwa.install')}><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>;
+}
+
+function CelebrationEffect({ onAnimationEnd }) {
+    useEffect(() => { const timer = setTimeout(onAnimationEnd, 2000); return () => clearTimeout(timer); }, [onAnimationEnd]);
+    const confetti = Array.from({ length: 50 }).map((_, i) => (<div key={i} className="confetti-piece" style={{left: `${Math.random()*100}%`,top:`${-20+Math.random()*-80}%`,backgroundColor:`hsl(${Math.random()*360}, 70%, 60%)`,transform:`rotate(${Math.random()*360}deg)`,animation:`fall ${1.5+Math.random()}s ${Math.random()*0.5}s ease-out forwards`}}></div>));
+    return (<><style>{`.celebration-overlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;z-index:100}.confetti-piece{position:absolute;width:10px;height:15px;opacity:0}@keyframes fall{0%{opacity:1;transform:translateY(0) rotate(0deg)}100%{opacity:0;transform:translateY(100vh) rotate(720deg)}}`}</style><div className="celebration-overlay">{confetti}</div></>);
+}
+
+function FocusSessionEndCelebration({ onAnimationEnd }) {
+    const { t } = useTranslation();
+    useEffect(() => {
+        const timer = setTimeout(onAnimationEnd, 3000); // Animation duration
+        return () => clearTimeout(timer);
+    }, [onAnimationEnd]);
+
+    return (
+        <>
+            <style>{`
+                .focus-celebration-overlay {
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    display: flex; flex-direction: column; justify-content: center; align-items: center;
+                    background-color: rgba(29, 78, 216, 0.8); backdrop-filter: blur(4px);
+                    z-index: 200; overflow: hidden;
+                    animation: fadeInCelebration 0.5s ease-out forwards, fadeOutCelebration 0.5s 2.5s ease-in forwards;
+                }
+                .launching-rocket {
+                    animation: rocketLaunch 2.5s ease-in-out forwards;
+                }
+                .celebration-text {
+                    font-size: 3rem;
+                    font-weight: bold; color: white;
+                    text-shadow: 3px 3px 0px rgba(0,0,0,0.2);
+                    margin-top: 20px;
+                    transform: scale(0);
+                    animation: popInText 0.5s 0.2s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+                }
+                @keyframes fadeInCelebration { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes fadeOutCelebration { from { opacity: 1; } to { opacity: 0; } }
+                @keyframes popInText { from { transform: scale(0); } to { transform: scale(1); } }
+                @keyframes rocketLaunch {
+                    0% { transform: translateY(20px) rotate(0deg); }
+                    10% { transform: translateY(20px) rotate(-5deg); }
+                    20% { transform: translateY(20px) rotate(5deg); }
+                    30% { transform: translateY(20px) rotate(-5deg); }
+                    40% { transform: translateY(20px) rotate(5deg); }
+                    50% { transform: translateY(20px) rotate(0deg); }
+                    100% { transform: translateY(-120vh) rotate(15deg); }
+                }
+            `}</style>
+            <div className="focus-celebration-overlay">
+                <svg className="launching-rocket" width="150" height="150" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9.5 20.5L6 22L7.5 17.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M14.5 20.5L18 22L16.5 17.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M12 17.5V22" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M7 14.5L4 16.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M17 14.5L20 16.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2Z" stroke="white" strokeWidth="2"/>
+                    <path d="M12 12C13.6569 12 15 10.6569 15 9C15 7.34315 13.6569 6 12 6C10.3431 6 9 7.34315 9 9C9 10.6569 10.3431 12 12 12Z" stroke="white" strokeWidth="2"/>
+                </svg>
+                <div className="celebration-text">{t('celebrations.unstoppable')}</div>
+            </div>
+        </>
+    );
+}
+
+function BreakSessionEndCelebration({ onAnimationEnd }) {
+    const { t } = useTranslation();
+    useEffect(() => {
+        const timer = setTimeout(onAnimationEnd, 3000); // Animation duration
+        return () => clearTimeout(timer);
+    }, [onAnimationEnd]);
+
+    return (
+        <>
+            <style>{`
+                .break-celebration-overlay {
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    display: flex; flex-direction: column; justify-content: center; align-items: center;
+                    background-color: rgba(34, 197, 94, 0.8); backdrop-filter: blur(4px);
+                    z-index: 200; overflow: hidden;
+                    animation: fadeInBreakCelebration 0.5s ease-out forwards, fadeOutBreakCelebration 0.5s 2.5s ease-in forwards;
+                }
+                .recharging-battery {
+                    animation: batteryCharge 2s ease-in-out infinite;
+                }
+                .break-celebration-text {
+                    font-size: 3rem;
+                    font-weight: bold; color: white;
+                    text-shadow: 3px 3px 0px rgba(0,0,0,0.2);
+                    margin-top: 20px;
+                    transform: scale(0);
+                    animation: popInBreakText 0.5s 0.2s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+                }
+                @keyframes fadeInBreakCelebration { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes fadeOutBreakCelebration { from { opacity: 1; } to { opacity: 0; } }
+                @keyframes popInBreakText { from { transform: scale(0); } to { transform: scale(1); } }
+                @keyframes batteryCharge {
+                    0%, 100% { opacity: 0.8; transform: scale(1); }
+                    50% { opacity: 1; transform: scale(1.1); }
+                }
+            `}</style>
+            <div className="break-celebration-overlay">
+                <svg className="recharging-battery" width="150" height="150" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17 7H4C3.44772 7 3 7.44772 3 8V16C3 16.5523 3.44772 17 4 17H17C17.5523 17 18 16.5523 18 16V8C18 7.44772 17.5523 7 17 7Z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M21 10V14" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M7 10.5L9.5 13L11.5 11L14 13.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <div className="break-celebration-text">{t('celebrations.recharged')}</div>
+            </div>
+        </>
+    );
+}
+
+
+export default function App() {
+    const [theme, setTheme] = useState('light');
+    const [activeTab, setActiveTab] = useState('timer');
+    const [settings, setSettings] = useState({
+        pomodoro: { focusDuration: 25, shortBreakDuration: 5, longBreakDuration: 15, sessionsBeforeLongBreak: 4 },
+        notifications: { vibration: true, sound: true, snooze: false },
+        animations: { focus: 'forest', break: 'waves' },
+        language: 'es'
+    });
+    const [notification, setNotification] = useState(null);
+    const [showCelebration, setShowCelebration] = useState(false);
+    const [showFocusCelebration, setShowFocusCelebration] = useState(false);
+    const [showBreakCelebration, setShowBreakCelebration] = useState(false);
+    
+    const triggerCelebration = () => setShowCelebration(true);
+    const triggerFocusCelebration = () => setShowFocusCelebration(true);
+    const triggerBreakCelebration = () => setShowBreakCelebration(true);
+
+    useEffect(() => { /* PWA Setup Logic */ }, []);
+    useEffect(() => { if (theme === 'dark') document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark'); }, [theme]);
+    
+    const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
+
+    const renderActiveTab = () => {
+        switch (activeTab) {
+            case 'timer': return <><PomodoroTimer /><TaskManager /><StudyRoom /></>;
+            case 'stats': return <Stats />;
+            case 'settings': return <Settings />;
+            case 'profile': return <ProfileScreen />;
+            default: return <PomodoroTimer />;
+        }
+    };
+    
+    return (
+        <SettingsContext.Provider value={{ settings, setSettings, setNotification, triggerCelebration, triggerFocusCelebration, triggerBreakCelebration }}>
+            <AppContext.Provider value={{ activeTab, setActiveTab }}>
+                <AuthProvider>
+                    <TaskProvider>
+                        <ThemeContext.Provider value={{ theme, toggleTheme }}>
+                            <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-sans transition-colors">
+                                {showCelebration && <CelebrationEffect onAnimationEnd={() => setShowCelebration(false)} />}
+                                {showFocusCelebration && <FocusSessionEndCelebration onAnimationEnd={() => setShowFocusCelebration(false)} />}
+                                {showBreakCelebration && <BreakSessionEndCelebration onAnimationEnd={() => setShowBreakCelebration(false)} />}
+                                
+                                <Header onTabChange={setActiveTab} />
+
+                                <main className="p-4 max-w-5xl mx-auto">
+                                    <div className="flex justify-center border-b border-gray-200 dark:border-gray-700 mb-8">
+                                        <TabButton tabName="timer" />
+                                        <TabButton tabName="stats" />
+                                        <TabButton tabName="settings" />
+                                        <TabButton tabName="profile" />
+                                    </div>
+                                    {renderActiveTab()}
+                                </main>
+                                <Notification notification={notification} onClose={() => setNotification(null)} />
+                            </div>
+                        </ThemeContext.Provider>
+                    </TaskProvider>
+                </AuthProvider>
+            </AppContext.Provider>
+        </SettingsContext.Provider>
+    );
+}
+
+const TabButton = ({ tabName }) => {
+    const { activeTab, setActiveTab } = useContext(AppContext);
+    const { t } = useTranslation();
+    return (
+        <button onClick={() => setActiveTab(tabName)} className={`px-4 md:px-6 py-3 font-semibold transition-colors ${activeTab === tabName ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-blue-400'}`}>
+            {t(`tabs.${tabName}`)}
+        </button>
+    );
+};
+
+
+const Header = ({ onTabChange }) => {
+    const { user } = useAuth();
+    const { theme, toggleTheme } = useTheme();
+    const { t } = useTranslation();
+
+    return (
+         <header className="p-4 flex justify-between items-center max-w-5xl mx-auto">
+            <h1 className="text-2xl font-bold text-blue-500 dark:text-blue-300">{t('header.title')}</h1>
+            <div className="flex items-center space-x-2 md:space-x-4">
+                <PwaInstaller />
+                <button onClick={toggleTheme} className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700" title={t('theme.toggle')}>
+                    {theme === 'light' ? <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>}
+                </button>
+                {user && (
+                    <div onClick={() => onTabChange('profile')} className="cursor-pointer">
+                        <img src={user.photoURL} alt="Avatar" className="w-10 h-10 rounded-full ring-2 ring-blue-400" />
+                    </div>
+                )}
+            </div>
+        </header>
+    );
+};
 
