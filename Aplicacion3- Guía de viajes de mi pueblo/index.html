@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="es" class="">
+<!-- 
+  Desarrollado por: Un veterano de la web (simulado)
+  Stack: HTML5, CSS3 (con TailwindCSS para utilidades), JavaScript (ES6+)
+  Diseño: Híbrido Material Design / Neumorfismo
+-->
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guía Interactiva Avanzada</title>
+
+  <!-- TailwindCSS CDN para utilidades de layout y responsive rápido -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- FontAwesome CDN para iconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================
+      NÚCLEO DE ESTILOS Y THEMING
+      ============================================
+      Usamos variables CSS (Custom Properties) para gestionar el modo claro/oscuro
+      y los efectos de Neumorfismo. Esto es mucho más limpio que alternar clases en cada elemento.
+    */
+
+    :root {
+      /* Paleta Modo Claro */
+      --bg-primary: #e0e5ec;
+      --bg-secondary: #e0e5ec;
+      --text-primary: #334155;
+      /* slate-700 */
+      --text-secondary: #64748b;
+      /* slate-500 */
+      --accent-color: #3b82f6;
+      /* blue-500 */
+
+      /* Sombras de Neumorfismo (Claro) */
+      --shadow-light: -8px -8px 16px #ffffff;
+      --shadow-dark: 8px 8px 16px #babecc;
+      --shadow-inset-light: inset -6px -6px 12px #ffffff;
+      --shadow-inset-dark: inset 6px 6px 12px #babecc;
+    }
+
+    html.dark {
+      /* Paleta Modo Oscuro */
+      --bg-primary: #2c2f35;
+      --bg-secondary: #303338;
+      --text-primary: #e5e7eb;
+      /* gray-200 */
+      --text-secondary: #9ca3af;
+      /* gray-400 */
+      --accent-color: #60a5fa;
+      /* blue-400 */
+
+      /* Sombras de Neumorfismo (Oscuro) */
+      --shadow-light: -8px -8px 16px #383c44;
+      --shadow-dark: 8px 8px 16px #202226;
+      --shadow-inset-light: inset -6px -6px 12px #383c44;
+      --shadow-inset-dark: inset 6px 6px 12px #202226;
+    }
+
+    /* Aplicación de variables */
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    /*
+      ============================================
+      ESTILOS DE COMPONENTES (NEUMORFISMO)
+      ============================================
+    */
+
+    /* Estilo base para elementos "elevados" */
+    .neumorphic-elevated {
+      background-color: var(--bg-secondary);
+      border-radius: 20px;
+      box-shadow: var(--shadow-dark), var(--shadow-light);
+      transition: all 0.3s ease;
+    }
+
+    /* Estilo para elementos "hundidos" o "inset" */
+    .neumorphic-inset {
+      background-color: var(--bg-primary);
+      border-radius: 15px;
+      box-shadow: var(--shadow-inset-dark), var(--shadow-inset-light);
+      transition: all 0.3s ease;
+    }
+
+    /* Botones Neumórficos */
+    .neumorphic-btn {
+      padding: 0.75rem 1.25rem;
+      border-radius: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      background-color: var(--bg-secondary);
+      box-shadow: var(--shadow-dark), var(--shadow-light);
+      transition: all 0.2s ease-out;
+      outline: none;
+    }
+
+    .neumorphic-btn:hover {
+      color: var(--accent-color);
+      transform: translateY(-2px);
+    }
+
+    .neumorphic-btn:active,
+    .neumorphic-btn.active {
+      color: var(--accent-color);
+      box-shadow: var(--shadow-inset-dark), var(--shadow-inset-light);
+      transform: translateY(1px);
+    }
+
+    /* Tarjetas (Cards) */
+    .card {
+      @apply neumorphic-elevated p-0 overflow-hidden;
+      /* Combinamos nuestra clase con utilidades de Tailwind */
+    }
+
+    .card:hover {
+      transform: scale(1.03);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+
+    html.dark .card:hover {
+      box-shadow: var(--shadow-dark), var(--shadow-light), 0 0 30px rgba(96, 165, 250, 0.2);
+    }
+
+    /*
+      ============================================
+      GESTIÓN DE NAVEGACIÓN Y PANTALLAS (SPA FAKE)
+      ============================================
+    */
+
+    .page-section {
+      display: none;
+      /* Oculto por defecto */
+      opacity: 0;
+      animation: fadeIn 0.8s ease-out forwards;
+    }
+
+    .page-section.active {
+      display: block;
+      /* Mostrado por JS */
+    }
+
+    /* Transición de salida de pantalla */
+    .page-section.exiting {
+      animation: fadeOut 0.4s ease-in forwards;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+      }
+
+      to {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+    }
+
+    /* Animación de entrada para la pantalla de bienvenida */
+    #home .welcome-title {
+      animation: slideInDown 1s ease-out 0.2s forwards;
+      opacity: 0;
+    }
+
+    #home .welcome-subtitle {
+      animation: slideInUp 1s ease-out 0.4s forwards;
+      opacity: 0;
+    }
+
+    /* Animación de fondo "guapa" */
+    .animated-gradient-bg {
+      background: linear-gradient(-45deg, var(--accent-color), #34d399, #fbbf24, #f87171);
+      background-size: 400% 400%;
+      animation: gradientShift 15s ease infinite;
+    }
+
+    html.dark .animated-gradient-bg {
+      background: linear-gradient(-45deg, #1e3a8a, #047857, #b45309, #9f1239);
+      background-size: 400% 400%;
+      animation: gradientShift 15s ease infinite;
+    }
+
+
+    @keyframes gradientShift {
+      0% {
+        background-position: 0% 50%;
+      }
+
+      50% {
+        background-position: 100% 50%;
+      }
+
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+
+    @keyframes slideInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-50px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInUp {
+      from {
+        opacity: 0;
+        transform: translateY(50px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Estilos para el loader */
+    #loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: var(--bg-primary);
+      z-index: 9999;
+      transition: opacity 0.5s ease, visibility 0.5s ease;
+    }
+
+    #loader.hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .spinner {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      border: 5px solid var(--text-secondary);
+      border-top-color: var(--accent-color);
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+
+</head>
+
+<body class="min-h-screen">
+
+  <!-- Loader / Pantalla de Carga -->
+  <div id="loader">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Navegación Principal -->
+  <nav class="neumorphic-elevated sticky top-4 mx-auto max-w-6xl w-[95%] z-50 p-4 flex justify-between items-center rounded-2xl">
+    <!-- Logo y Título -->
+    <div class="flex items-center space-x-3">
+      <span class="fa-solid fa-map-signs text-2xl text-[var(--accent-color)]"></span>
+      <h1 class="text-xl font-bold text-[var(--text-primary)] hidden md:block">Mi Guía</h1>
+    </div>
+
+    <!-- Enlaces de Navegación (Desktop) -->
+    <div class="hidden md:flex items-center space-x-2" id="nav-links">
+      <button class="neumorphic-btn nav-link active" data-target="home">
+        <i class="fa-solid fa-house-chimney w-5 h-5 mr-1"></i> Inicio
+      </button>
+      <button class="neumorphic-btn nav-link" data-target="pueblo">
+        <i class="fa-solid fa-map-location-dot w-5 h-5 mr-1"></i> Mi Pueblo
+      </button>
+      <button class="neumorphic-btn nav-link" data-target="coches">
+        <i class="fa-solid fa-car w-5 h-5 mr-1"></i> Coches
+      </button>
+      <button class="neumorphic-btn nav-link" data-target="series">
+        <i class="fa-solid fa-tv w-5 h-5 mr-1"></i> Series
+      </button>
+    </div>
+
+    <!-- Iconos de Acción y Menú Móvil -->
+    <div class="flex items-center space-x-3">
+      <!-- Buscador (Neumorfismo Inset) -->
+      <div class="neumorphic-inset hidden md:flex items-center px-3 py-2">
+        <i class="fa-solid fa-search text-[var(--text-secondary)]"></i>
+        <input type="search" id="search-bar" placeholder="Buscar en la guía..." class="bg-transparent border-none focus:ring-0 text-sm placeholder-[var(--text-secondary)] text-[var(--text-primary)] ml-2 outline-none">
+      </div>
+
+      <!-- Toggle Modo Oscuro -->
+      <button id="theme-toggle" class="neumorphic-btn !p-3 w-12 h-12 flex items-center justify-center">
+        <i class="fa-solid fa-moon text-lg" id="theme-icon-dark"></i>
+        <i class="fa-solid fa-sun text-lg" id="theme-icon-light"></i>
+      </button>
+
+      <!-- Botón Menú Móvil -->
+      <button id="mobile-menu-btn" class="neumorphic-btn !p-3 w-12 h-12 flex items-center justify-center md:hidden">
+        <i class="fa-solid fa-bars text-lg"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Menú de Navegación Móvil (Oculto por defecto) -->
+  <div id="mobile-menu" class="hidden md:hidden fixed top-24 left-0 w-full z-40 p-4">
+    <div class="neumorphic-elevated w-full p-4 rounded-2xl flex flex-col space-y-3">
+      <button class="neumorphic-btn nav-link w-full text-left !justify-start" data-target="home">
+        <i class="fa-solid fa-house-chimney w-5 h-5 mr-2"></i> Inicio
+      </button>
+      <button class="neumorphic-btn nav-link w-full text-left !justify-start" data-target="pueblo">
+        <i class="fa-solid fa-map-location-dot w-5 h-5 mr-2"></i> Mi Pueblo
+      </button>
+      <button class="neumorphic-btn nav-link w-full text-left !justify-start" data-target="coches">
+        <i class="fa-solid fa-car w-5 h-5 mr-2"></i> Coches
+      </button>
+      <button class="neumorphic-btn nav-link w-full text-left !justify-start" data-target="series">
+        <i class="fa-solid fa-tv w-5 h-5 mr-2"></i> Series
+      </button>
+      <!-- Buscador Móvil -->
+      <div class="neumorphic-inset flex items-center px-3 py-2 mt-2">
+        <i class="fa-solid fa-search text-[var(--text-secondary)]"></i>
+        <input type="search" id="search-bar-mobile" placeholder="Buscar..." class="bg-transparent border-none focus:ring-0 text-sm placeholder-[var(--text-secondary)] text-[var(--text-primary)] ml-2 outline-none w-full">
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Contenedor Principal de Páginas -->
+  <main class="max-w-6xl mx-auto p-4 md:p-8 mt-6">
+
+    <!-- 
+      ============================================
+      PANTALLA: INICIO
+      ============================================
+    -->
+    <section id="home" class="page-section active">
+      <div class="animated-gradient-bg text-white rounded-3xl p-12 md:p-20 text-center overflow-hidden min-h-[60vh] flex flex-col justify-center items-center">
+        <h2 class="text-4xl md:text-6xl font-bold mb-4 opacity-0 welcome-title">Bienvenido a la Guía Interactiva</h2>
+        <p class="text-xl md:text-2xl font-light opacity-0 welcome-subtitle">Explora mundos, descubre lugares y más.</p>
+
+        <!-- 
+          COMENTARIO DE EXPERTO (C++ / WebAssembly):
+          Aquí sería el lugar ideal para un efecto visual avanzado.
+          Imagina que en lugar de un gradiente animado, tuviéramos
+          un canvas de WebGL con un efecto de partículas o un
+          modelo 3D interactivo (ej. un coche, un monumento)
+          controlado por un módulo de C++ compilado a WebAssembly.
+
+          <canvas id="wasm-effect" class="absolute top-0 left-0 w-full h-full z-0"></canvas>
+          
+          En el JS, inicializaríamos el módulo WASM y le pasaríamos
+          el control de este canvas.
+        -->
+
+      </div>
+      <div class="mt-12 text-center">
+        <h3 class="text-2xl font-bold mb-4 text-[var(--text-primary)]">¿Qué quieres explorar hoy?</h3>
+        <p class="text-lg text-[var(--text-secondary)] max-w-2xl mx-auto">
+          Usa la navegación superior para sumergirte en diferentes secciones, desde la tranquilidad de "Mi Pueblo" hasta la velocidad de "Guía de Coches".
+        </p>
+      </div>
+    </section>
+
+    <!-- 
+      ============================================
+      PANTALLA: MI PUEBLO
+      ============================================
+    -->
+    <section id="pueblo" class="page-section">
+      <h2 class="text-3xl font-bold mb-8 text-[var(--text-primary)]">Mi Pueblo: Lugares de Interés</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <!-- Card 1 -->
+        <div class="card searchable-item">
+          <img src="https://placehold.co/600x400/3b82f6/white?text=Plaza+Mayor&font=inter" alt="Plaza del Pueblo" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2 text-[var(--text-primary)] card-title">Plaza Mayor</h3>
+            <p class="text-[var(--text-secondary)] card-text">El corazón del pueblo, donde se celebran todos los eventos principales. Ideal para tomar un café.</p>
+          </div>
+        </div>
+        <!-- Card 2 -->
+        <div class="card searchable-item">
+          <img src="https://placehold.co/600x400/10b981/white?text=El+Mirador&font=inter" alt="Mirador" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2 text-[var(--text-primary)] card-title">El Mirador</h3>
+            <p class="text-[var(--text-secondary)] card-text">Ofrece vistas panorámicas de todo el valle. La mejor hora para ir es al atardecer.</p>
+          </div>
+        </div>
+        <!-- Card 3 -->
+        <div class="card searchable-item">
+          <img src="https://placehold.co/600x400/f59e0b/white?text=Restaurante+Casa+Ana&font=inter" alt="Restaurante" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2 text-[var(--text-primary)] card-title">Restaurante Casa Ana</h3>
+            <p class="text-[var(--text-secondary)] card-text">Famoso por su guiso tradicional y su ambiente acogedor. No te vayas sin probarlo.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 
+      ============================================
+      PANTALLA: GUÍA DE COCHES
+      ============================================
+    -->
+    <section id="coches" class="page-section">
+      <h2 class="text-3xl font-bold mb-8 text-[var(--text-primary)]">Guía de Coches: Novedades</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <!-- Card 1 -->
+        <div class="card searchable-item">
+          <img src="https://placehold.co/600x400/ef4444/white?text=Deportivo+Veloz&font=inter" alt="Deportivo" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2 text-[var(--text-primary)] card-title">Deportivo VZ-300</h3>
+            <p class="text-[var(--text-secondary)] card-text">El último modelo deportivo con un motor V8 y diseño aerodinámico. 0-100 en 3.2s.</p>
+          </div>
+        </div>
+        <!-- Card 2 -->
+        <div class="card searchable-item">
+          <img src="https://placehold.co/600x400/22c55e/white?text=Eléctrico+Urbano&font=inter" alt="Eléctrico" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2 text-[var(--text-primary)] card-title">Urbano-E 2025</h3>
+            <p class="text-[var(--text-secondary)] card-text">El coche eléctrico perfecto para la ciudad. 500km de autonomía y carga ultra-rápida.</p>
+          </div>
+        </div>
+        <!-- Card 3 -->
+        <div class="card searchable-item">
+          <img src="https://placehold.co/600x400/8b5cf6/white?text=SUV+Familiar&font=inter" alt="SUV" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2 text-[var(--text-primary)] card-title">Aventura SUV 4x4</h3>
+            <p class="text-[var(--text-secondary)] card-text">Diseñado para la familia y la aventura. Espacio para 7 y tracción total inteligente.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 
+      ============================================
+      PANTALLA: SERIES Y PELÍCULAS
+      ============================================
+    -->
+    <section id="series" class="page-section">
+      <h2 class="text-3xl font-bold mb-8 text-[var(--text-primary)]">Series y Películas: Recomendadas</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <!-- Card 1 -->
+        <div class="card searchable-item">
+          <img src="https://placehold.co/600x400/1e293b/white?text=Cyber+Runners&font=inter" alt="Serie Sci-Fi" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2 text-[var(--text-primary)] card-title">Cyber Runners</h3>
+            <p class="text-[var(--text-secondary)] card-text">Una serie de ciencia ficción distópica que explora la inteligencia artificial y la conciencia humana.</p>
+          </div>
+        </div>
+        <!-- Card 2 -->
+        <div class="card searchable-item">
+          <img src="https://placehold.co/600x400/7c3aed/white?text=El+Último+Reino&font=inter" alt="Serie Histórica" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2 text-[var(--text-primary)] card-title">El Último Reino</h3>
+            <p class="text-[var(--text-secondary)] card-text">Drama histórico épico lleno de batallas, política y alianzas frágiles en la Inglaterra medieval.</p>
+          </div>
+        </div>
+        <!-- Card 3 -->
+        <div class="card searchable-item">
+          <img src="https://placehold.co/600x400/db2777/white?text=Misterio+en+la+Costa&font=inter" alt="Película Misterio" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2 text-[var(--text-primary)] card-title">Misterio en la Costa</h3>
+            <p class="text-[var(--text-secondary)] card-text">Un thriller psicológico donde un detective debe resolver un caso imposible antes de que sea tarde.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="max-w-6xl mx-auto p-8 mt-12 text-center">
+    <div class="neumorphic-inset p-8 rounded-2xl">
+      <div class="flex justify-center space-x-6 mb-4">
+        <a href="#" class="neumorphic-btn !rounded-full !p-4 w-14 h-14 flex items-center justify-center text-xl">
+          <i class="fab fa-twitter"></i>
+        </a>
+        <a href="#" class="neumorphic-btn !rounded-full !p-4 w-14 h-14 flex items-center justify-center text-xl">
+          <i class="fab fa-github"></i>
+        </a>
+        <a href="#" class="neumorphic-btn !rounded-full !p-4 w-14 h-14 flex items-center justify-center text-xl">
+          <i class="fab fa-linkedin-in"></i>
+        </a>
+      </div>
+      <p class="text-[var(--text-secondary)] text-sm">
+        © 2025 Guía Interactiva Avanzada. Todos los derechos reservados.
+      </p>
+      <p class="text-[var(--text-secondary)] text-xs mt-2">
+        Un concepto de desarrollo web moderno.
+      </p>
+    </div>
+  </footer>
+
+
+  <!-- 
+    ============================================
+    SCRIPTS JAVASCRIPT
+    ============================================
+  -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // --- SELECTORES PRINCIPALES ---
+      const themeToggle = document.getElementById('theme-toggle');
+      const themeIconDark = document.getElementById('theme-icon-dark');
+      const themeIconLight = document.getElementById('theme-icon-light');
+      const navLinks = document.querySelectorAll('.nav-link');
+      const pageSections = document.querySelectorAll('.page-section');
+      const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+      const mobileMenu = document.getElementById('mobile-menu');
+      const searchBars = [document.getElementById('search-bar'), document.getElementById('search-bar-mobile')];
+      const loader = document.getElementById('loader');
+      let currentActivePage = document.querySelector('.page-section.active');
+
+      // --- LÓGICA DEL LOADER ---
+      // Ocultamos el loader cuando la página esté completamente cargada
+      window.addEventListener('load', () => {
+        loader.classList.add('hidden');
+      });
+
+      // --- LÓGICA DE MODO CLARO/OSCURO ---
+      function setTheme(isDark) {
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+          themeIconDark.style.display = 'none';
+          themeIconLight.style.display = 'block';
+          localStorage.setItem('theme', 'dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+          themeIconDark.style.display = 'block';
+          themeIconLight.style.display = 'none';
+          localStorage.setItem('theme', 'light');
+        }
+      }
+
+      // Comprobar tema guardado al cargar
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const savedTheme = localStorage.getItem('theme');
+      setTheme(savedTheme === 'dark' || (savedTheme === null && prefersDark));
+
+      // Evento del botón
+      themeToggle.addEventListener('click', () => {
+        setTheme(!document.documentElement.classList.contains('dark'));
+      });
+
+      // --- LÓGICA DE NAVEGACIÓN (SPA) ---
+      function switchPage(targetId) {
+        if (!targetId) return;
+
+        const newActivePage = document.getElementById(targetId);
+        if (!newActivePage || newActivePage === currentActivePage) return;
+
+        // 1. Añadir clase de salida a la página actual
+        if (currentActivePage) {
+          currentActivePage.classList.add('exiting');
+        }
+
+        // 2. Esperar a que termine la animación de salida
+        setTimeout(() => {
+          // 3. Ocultar la página antigua
+          if (currentActivePage) {
+            currentActivePage.classList.remove('active', 'exiting');
+          }
+
+          // 4. Mostrar la nueva página con su animación de entrada
+          newActivePage.classList.add('active');
+          currentActivePage = newActivePage;
+
+          // 5. Actualizar estado 'active' en los botones de nav
+          navLinks.forEach(link => {
+            link.classList.toggle('active', link.dataset.target === targetId);
+          });
+
+          // 6. Cerrar menú móvil si está abierto
+          mobileMenu.classList.add('hidden');
+
+        }, 400); // 400ms (coincide con la anim_fadeOut)
+      }
+
+      navLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const targetId = e.currentTarget.dataset.target;
+          switchPage(targetId);
+        });
+      });
+
+      // --- LÓGICA MENÚ MÓVIL ---
+      mobileMenuBtn.addEventListener('click', () => {
+        mobileMenu.classList.toggle('hidden');
+      });
+
+      // --- LÓGICA DE BÚSQUEDA ---
+      function handleSearch(event) {
+        const searchTerm = event.target.value.toLowerCase();
+        
+        // Solo buscamos en la página activa
+        const itemsToSearch = currentActivePage.querySelectorAll('.searchable-item');
+
+        itemsToSearch.forEach(item => {
+          const title = item.querySelector('.card-title')?.textContent.toLowerCase() || '';
+          const text = item.querySelector('.card-text')?.textContent.toLowerCase() || '';
+          const isMatch = title.includes(searchTerm) || text.includes(searchTerm);
+          
+          item.style.display = isMatch ? 'block' : 'none';
+        });
+      }
+
+      searchBars.forEach(bar => {
+        bar.addEventListener('input', handleSearch);
+      });
+
+      // --- LÓGICA C++ / WebAssembly (Simulación) ---
+      /*
+        COMENTARIO DE EXPERTO:
+        Si esto fuera una implementación real de WebAssembly (WASM):
+        
+        1. Tendríamos un archivo 'effects.wasm' (compilado de C++) y un
+           'effects.js' (pegamento) generado por Emscripten.
+
+        2. Lo cargaríamos aquí:
+           async function initWasm() {
+             try {
+               // Cargar el módulo WASM
+               const { default: createModule } = await import('./effects.js');
+               const wasmModule = await createModule();
+               
+               // Obtener el canvas
+               const canvas = document.getElementById('wasm-effect');
+               if (canvas) {
+                 // Inicializar el efecto en el canvas
+                 wasmModule._init_canvas(canvas); 
+                 // (Llamando a una función C++ expuesta 'init_canvas')
+                 
+                 // Iniciar el bucle de renderizado de WASM
+                 wasmModule._start_render_loop();
+                 
+                 console.log('Módulo C++/WASM cargado y controlando el canvas.');
+               }
+             } catch (err) {
+               console.error('Error al cargar el módulo WebAssembly:', err);
+               // Fallback a un efecto CSS/JS si falla
+             }
+           }
+           
+           // Iniciar la carga del módulo
+           initWasm();
+
+        3. El módulo C++ tomaría el control del canvas usando OpenGL (vía WebGL)
+           para renderizar efectos de partículas, shaders complejos o modelos 3D
+           con un rendimiento casi nativo, imposible de lograr solo con JS.
+      */
+      console.log('App de Guía Interactiva inicializada.');
+      console.log('Comentario: El stub de WebAssembly está presente en los comentarios del script.');
+
+    });
+  </script>
+
+</body>
+
+</html>
